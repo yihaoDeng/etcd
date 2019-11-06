@@ -204,7 +204,7 @@ func newLessor(lg *zap.Logger, b backend.Backend, cfg LessorConfig) *lessor {
 	}
 	l := &lessor{
 		leaseMap:                  make(map[LeaseID]*Lease),
-		itemMap:                   make(map[LeaseItem]LeaseID),
+		itemMap:                   make(map[LeaseItem]LeaseID), // 不同的key对应一个leaseID
 		leaseExpiredNotifier:      newLeaseExpiredNotifier(),
 		leaseCheckpointHeap:       make(LeaseQueue, 0),
 		b:                         b,
@@ -587,6 +587,7 @@ func (le *lessor) runLoop() {
 		le.revokeExpiredLeases()
 		le.checkpointScheduledLeases()
 
+		// 500ms 调用一次
 		select {
 		case <-time.After(500 * time.Millisecond):
 		case <-le.stopC:

@@ -22,24 +22,24 @@ import pb "go.etcd.io/etcd/raft/raftpb"
 // state is what it requests through RequestCtx, eg. given a unique id as
 // RequestCtx
 type ReadState struct {
-	Index      uint64
-	RequestCtx []byte
+	Index      uint64 // 接受到读请求时, 当前节点commit的index
+	RequestCtx []byte // 客户端读请求的唯一标识
 }
 
 type readIndexStatus struct {
-	req   pb.Message
-	index uint64
+	req   pb.Message // 原始消息体
+	index uint64     // leader当前的commit index
 	// NB: this never records 'false', but it's more convenient to use this
 	// instead of a map[uint64]struct{} due to the API of quorum.VoteResult. If
 	// this becomes performance sensitive enough (doubtful), quorum.VoteResult
 	// can change to an API that is closer to that of CommittedIndex.
-	acks map[uint64]bool
+	acks map[uint64]bool // 存放那些对该readindex已经做了应答的节点, 当超过半数的时候, leader就可以确定自己当前仍然是leader
 }
 
 type readOnly struct {
 	option           ReadOnlyOption
-	pendingReadIndex map[string]*readIndexStatus
-	readIndexQueue   []string
+	pendingReadIndex map[string]*readIndexStatus // 当前所有待处理的readIndex请求，其中key为客户端读请求的唯一标识
+	readIndexQueue   []string                    // 保存所有readIndex请求的请求唯一标识数组
 }
 
 func newReadOnly(option ReadOnlyOption) *readOnly {

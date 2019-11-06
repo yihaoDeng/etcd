@@ -673,13 +673,13 @@ func (s *EtcdServer) linearizableReadLoop() {
 
 	for {
 		ctxToSend := make([]byte, 8)
-		id1 := s.reqIDGen.Next()
+		id1 := s.reqIDGen.Next() // unique id
 		binary.BigEndian.PutUint64(ctxToSend, id1)
 		leaderChangedNotifier := s.leaderChangedNotify()
 		select {
 		case <-leaderChangedNotifier:
 			continue
-		case <-s.readwaitc:
+		case <-s.readwaitc: // 有请求的时候会触发到这里,linearizableReadNotify触发
 		case <-s.stopping:
 			return
 		}
@@ -715,7 +715,7 @@ func (s *EtcdServer) linearizableReadLoop() {
 		)
 		for !timeout && !done {
 			select {
-			case rs = <-s.r.readStateC:
+			case rs = <-s.r.readStateC: //上层raft.go触发这个chan
 				done = bytes.Equal(rs.RequestCtx, ctxToSend)
 				if !done {
 					// a previous request might time out. now we should ignore the response of it and
@@ -759,7 +759,7 @@ func (s *EtcdServer) linearizableReadLoop() {
 
 		if ai := s.getAppliedIndex(); ai < rs.Index {
 			select {
-			case <-s.applyWait.Wait(rs.Index):
+			case <-s.applyWait.Wait(rs.Index): //小于等于这个index都被触发
 			case <-s.stopping:
 				return
 			}
@@ -776,7 +776,7 @@ func (s *EtcdServer) linearizableReadNotify(ctx context.Context) error {
 
 	// signal linearizable loop for current notify if it hasn't been already
 	select {
-	case s.readwaitc <- struct{}{}:
+	case s.readwaitc <- struct{}{}: // 触发linearizableReadLoop
 	default:
 	}
 

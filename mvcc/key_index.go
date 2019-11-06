@@ -139,13 +139,14 @@ func (ki *keyIndex) tombstone(lg *zap.Logger, main int64, sub int64) error {
 		return ErrRevisionNotFound
 	}
 	ki.put(lg, main, sub)
-	ki.generations = append(ki.generations, generation{})
+	ki.generations = append(ki.generations, generation{}) // 放置一个空的版本
 	keysGauge.Dec()
 	return nil
 }
 
 // get gets the modified, created revision and version of the key that satisfies the given atRev.
 // Rev must be higher than or equal to the given atRev.
+// 这是就是多版本的搜索
 func (ki *keyIndex) get(lg *zap.Logger, atRev int64) (modified, created revision, ver int64, err error) {
 	if ki.isEmpty() {
 		if lg != nil {
@@ -356,8 +357,9 @@ func (ki *keyIndex) String() string {
 }
 
 // generation contains multiple revisions of a key.
+// 一代数据的版本变化
 type generation struct {
-	ver     int64
+	ver     int64    // 数据变化次数
 	created revision // when the generation is created (put in first revision).
 	revs    []revision
 }

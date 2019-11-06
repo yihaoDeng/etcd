@@ -170,7 +170,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 			select {
 			case <-r.ticker.C:
 				r.tick()
-			case rd := <-r.Ready():
+			case rd := <-r.Ready(): // 待commit 的数据
 				if rd.SoftState != nil {
 					newLeader := rd.SoftState.Lead != raft.None && rh.getLead() != rd.SoftState.Lead
 					if newLeader {
@@ -183,17 +183,18 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 						hasLeader.Set(1)
 					}
 
-					rh.updateLead(rd.SoftState.Lead)
+					rh.updateLead(rd.SoftState.Lead) // 该函数在初始化server的定义
 					islead = rd.RaftState == raft.StateLeader
 					if islead {
 						isLeader.Set(1)
 					} else {
 						isLeader.Set(0)
 					}
-					rh.updateLeadership(newLeader)
+					rh.updateLeadership(newLeader) // 该函数在初始化server的定义
+
 					r.td.Reset()
 				}
-
+				// 实现线性读, 这个之后再解释
 				if len(rd.ReadStates) != 0 {
 					select {
 					case r.readStateC <- rd.ReadStates[len(rd.ReadStates)-1]:
@@ -215,10 +216,10 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 					notifyc:  notifyc,
 				}
 
-				updateCommittedIndex(&ap, rh)
+				updateCommittedIndex(&ap, rh) // 该函数在初始化server的定义
 
 				select {
-				case r.applyc <- ap:
+				case r.applyc <- ap: // 该applied msg 传递给应用层goroutine, 注意这里也传了一个notifyc(chan)
 				case <-r.stopped:
 					return
 				}
@@ -232,6 +233,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				}
 
 				// gofail: var raftBeforeSave struct{}
+				// WAL
 				if err := r.storage.Save(rd.HardState, rd.Entries); err != nil {
 					if r.lg != nil {
 						r.lg.Fatal("failed to save Raft hard state and entries", zap.Error(err))
@@ -244,6 +246,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				}
 				// gofail: var raftAfterSave struct{}
 
+				// 如果本消息中包含快照信息, 那么需要在WAL日志保存起来
 				if !raft.IsEmptySnap(rd.Snapshot) {
 					// gofail: var raftBeforeSaveSnap struct{}
 					if err := r.storage.SaveSnap(rd.Snapshot); err != nil {
@@ -254,10 +257,10 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 						}
 					}
 					// etcdserver now claim the snapshot has been persisted onto the disk
-					notifyc <- struct{}{}
+					notifyc <- struct{}{} // 告诉应用层, 快照已经持久化到磁盘中
 
 					// gofail: var raftAfterSaveSnap struct{}
-					r.raftStorage.ApplySnapshot(rd.Snapshot)
+					r.raftStorage.ApplySnapshot(rd.Snapshot) // 使用rd中的快照信息更新当前raftStorage中的快照信息
 					if r.lg != nil {
 						r.lg.Info("applied incoming Raft snapshot", zap.Uint64("snapshot-index", rd.Snapshot.Metadata.Index))
 					} else {
@@ -266,14 +269,15 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 					// gofail: var raftAfterApplySnap struct{}
 				}
 
-				r.raftStorage.Append(rd.Entries)
+				r.raftStorage.Append(rd.Entries) //applied msg, 该raft 的实现里, 这是的raftStorage是纯内存的, 所以要进程挂掉, 还是要依赖WAL来恢复
 
+				// 本节点不是leader的话, 那么执行下面的流程
 				if !islead {
 					// finish processing incoming messages before we signal raftdone chan
 					msgs := r.processMessages(rd.Messages)
 
 					// now unblocks 'applyAll' that waits on Raft log disk writes before triggering snapshots
-					notifyc <- struct{}{}
+					notifyc <- struct{}{} // 激活正在等待log disk writes的goroutine
 
 					// Candidate or follower needs to wait for all pending configuration
 					// changes to be applied before sending messages.
@@ -282,6 +286,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 					// on its own single-node cluster, before apply-layer applies the config change.
 					// We simply wait for ALL pending entries to be applied for now.
 					// We might improve this later on if it causes unnecessary long blocking issues.
+					// 如果小时引发成员变更, 那么就走该流程
 					waitApply := false
 					for _, ent := range rd.CommittedEntries {
 						if ent.Type == raftpb.EntryConfChange {
@@ -302,12 +307,12 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 
 					// gofail: var raftBeforeFollowerSend struct{}
 					r.transport.Send(msgs)
-				} else {
+				} else { // 本节点是leader, 那么直接触发应用层做其他流程
 					// leader already processed 'MsgSnap' and signaled
 					notifyc <- struct{}{}
 				}
 
-				r.Advance()
+				r.Advance() //
 			case <-r.stopped:
 				return
 			}
@@ -333,7 +338,7 @@ func (r *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
 	for i := len(ms) - 1; i >= 0; i-- {
 		if r.isIDRemoved(ms[i].To) {
 			ms[i].To = 0
-		}
+		} //如果目标节点已经被删除, 那么这条消息不用再发送了
 
 		if ms[i].Type == raftpb.MsgAppResp {
 			if sentAppResp {
@@ -342,7 +347,7 @@ func (r *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
 				sentAppResp = true
 			}
 		}
-
+		//如果该条消息是快照消息, 那么需要其他goroutine触发, 这里只是发送一个msg, 发送应用层的ApplyAll, 在哪边做处理
 		if ms[i].Type == raftpb.MsgSnap {
 			// There are two separate data store: the store for v2, and the KV for v3.
 			// The msgSnap only contains the most recent snapshot of store without KV.
@@ -355,6 +360,8 @@ func (r *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
 			}
 			ms[i].To = 0
 		}
+		// 如果是hb msg, 检测一下, 上次发消息的时间, 如果超过阈值, 打日志
+		//TODO(dengyihao), 这里检测是hb的interval还是msg的interval
 		if ms[i].Type == raftpb.MsgHeartbeat {
 			ok, exceed := r.td.Observe(ms[i].To)
 			if !ok {

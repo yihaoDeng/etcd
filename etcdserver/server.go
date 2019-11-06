@@ -1099,18 +1099,19 @@ func (s *EtcdServer) run() {
 }
 
 func (s *EtcdServer) applyAll(ep *etcdProgress, apply *apply) {
-	s.applySnapshot(ep, apply)
-	s.applyEntries(ep, apply)
+	s.applySnapshot(ep, apply) // 如果msg中包含快照消息, 那么要做一系列恢复
+	s.applyEntries(ep, apply)  // 具体的消息处理
 
 	proposalsApplied.Set(float64(ep.appliedi))
-	s.applyWait.Trigger(ep.appliedi)
-
+	// 整个消息处理完毕了, 可以触发其他goroutine
+	//1. 用户请求
+	s.applyWait.Trigger(ep.appliedi) //  小于等于ep.appliedi的wait都会被触发
 	// wait for the raft routine to finish the disk writes before triggering a
 	// snapshot. or applied index might be greater than the last index in raft
 	// storage, since the raft routine might be slower than apply routine.
 	<-apply.notifyc
 
-	s.triggerSnapshot(ep)
+	s.triggerSnapshot(ep) // 是否需要触发snapshot
 	select {
 	// snapshot requested via send()
 	case m := <-s.r.msgSnapC:
@@ -1123,7 +1124,7 @@ func (s *EtcdServer) applyAll(ep *etcdProgress, apply *apply) {
 func (s *EtcdServer) applySnapshot(ep *etcdProgress, apply *apply) {
 	if raft.IsEmptySnap(apply.snapshot) {
 		return
-	}
+	} //
 	applySnapshotInProgress.Inc()
 
 	lg := s.getLogger()

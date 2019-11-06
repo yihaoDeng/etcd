@@ -55,7 +55,7 @@ const (
 	// If the clock drift is unbounded, leader might keep the lease longer than it
 	// should (clock can move backward/pause without any bound). ReadIndex is not safe
 	// in that case.
-	ReadOnlyLeaseBased
+	ReadOnlyLeaseBased // 这是一种优化的方式, 精度依赖于clock drift
 )
 
 // Possible values for CampaignType

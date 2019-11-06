@@ -91,7 +91,7 @@ func (u *unstable) stableTo(i, t uint64) {
 // if most of it isn't being used. This avoids holding references to a bunch of
 // potentially large entries that aren't needed anymore. Simply clearing the
 // entries wouldn't be safe because clients might still be using them.
-func (u *unstable) shrinkEntriesArray() {
+func (u *unstable) shrinkEntriesArray() { // 缩小占用的空间
 	// We replace the array if we're using less than half of the space in
 	// it. This number is fairly arbitrary, chosen as an attempt to balance
 	// memory usage vs number of allocations. It could probably be improved

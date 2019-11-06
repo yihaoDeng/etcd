@@ -606,17 +606,18 @@ func (s *EtcdServer) doSerialize(ctx context.Context, chk func(*auth.AuthInfo) e
 }
 
 func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.InternalRaftRequest) (*applyResult, error) {
-	ai := s.getAppliedIndex()
-	ci := s.getCommittedIndex()
+	// 所有的请求都经过这个路径
+	ai := s.getAppliedIndex()   // applied index
+	ci := s.getCommittedIndex() // commit index
 	if ci > ai+maxGapBetweenApplyAndCommitIndex {
 		return nil, ErrTooManyRequests
-	}
+	} // 如果commit 和applied 之间差距太大, 则直接拒绝新的请求
 
 	r.Header = &pb.RequestHeader{
 		ID: s.reqIDGen.Next(),
-	}
+	} // 生成一个基本递增的id, 作为请求的头
 
-	authInfo, err := s.AuthInfoFromCtx(ctx)
+	authInfo, err := s.AuthInfoFromCtx(ctx) // 鉴定身份/权限
 	if err != nil {
 		return nil, err
 	}
@@ -625,14 +626,14 @@ func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.In
 		r.Header.AuthRevision = authInfo.Revision
 	}
 
-	data, err := r.Marshal()
+	data, err := r.Marshal() // 序列化
 	if err != nil {
 		return nil, err
 	}
 
 	if len(data) > int(s.Cfg.MaxRequestBytes) {
 		return nil, ErrRequestTooLarge
-	}
+	} // 如果单个请求太大, 则拒绝这个请求
 
 	id := r.ID
 	if id == 0 {
@@ -644,7 +645,7 @@ func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.In
 	defer cancel()
 
 	start := time.Now()
-	err = s.r.Propose(cctx, data)
+	err = s.r.Propose(cctx, data) // 发起一个提议
 	if err != nil {
 		proposalsFailed.Inc()
 		s.w.Trigger(id, nil) // GC wait
@@ -673,9 +674,9 @@ func (s *EtcdServer) linearizableReadLoop() {
 
 	for {
 		ctxToSend := make([]byte, 8)
-		id1 := s.reqIDGen.Next() // unique id
+		id1 := s.reqIDGen.Next() // 生成严格递增的ID
 		binary.BigEndian.PutUint64(ctxToSend, id1)
-		leaderChangedNotifier := s.leaderChangedNotify()
+		leaderChangedNotifier := s.leaderChangedNotify() //  为了实现线性读, 必须得留意期间可能触发的config change
 		select {
 		case <-leaderChangedNotifier:
 			continue

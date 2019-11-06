@@ -114,7 +114,7 @@ func (rd Ready) containsUpdates() bool {
 // contained in the Ready, returns zero.
 func (rd Ready) appliedCursor() uint64 {
 	if n := len(rd.CommittedEntries); n > 0 {
-		return rd.CommittedEntries[n-1].Index
+		return rd.CommittedEntries[n-1].Index //
 	}
 	if index := rd.Snapshot.Metadata.Index; index > 0 {
 		return index
@@ -315,7 +315,7 @@ func (n *node) run() {
 			// handled first, but it's generally good to emit larger Readys plus
 			// it simplifies testing (by emitting less frequently and more
 			// predictably).
-			rd = n.rn.readyWithoutAccept()
+			rd = n.rn.readyWithoutAccept() // 构造ready
 			readyc = n.readyc
 		}
 
@@ -338,20 +338,20 @@ func (n *node) run() {
 		// TODO: maybe buffer the config propose if there exists one (the way
 		// described in raft dissertation)
 		// Currently it is dropped in Step silently.
-		case pm := <-propc:
+		case pm := <-propc: // 由本node的其他goroutine 传递过来
 			m := pm.m
-			m.From = r.id
+			m.From = r.id //该msg的来自本node, 因此设置为本node id
 			err := r.Step(m)
 			if pm.result != nil {
 				pm.result <- err
 				close(pm.result)
 			}
-		case m := <-n.recvc:
+		case m := <-n.recvc: //  接受到了消息, 查看消息来自哪一个node, 或者该消息并不是response
 			// filter out response message from unknown From.
 			if pr := r.prs.Progress[m.From]; pr != nil || !IsResponseMsg(m.Type) {
 				r.Step(m)
 			}
-		case cc := <-n.confc:
+		case cc := <-n.confc: // 可能集群成员发送变化
 			_, okBefore := r.prs.Progress[r.id]
 			cs := r.applyConfChange(cc)
 			// If the node was removed, block incoming proposals. Note that we
@@ -377,13 +377,13 @@ func (n *node) run() {
 				}
 			}
 			select {
-			case n.confstatec <- cs:
+			case n.confstatec <- cs: // 等待集群成员发生改变. 该消息会传递到上层
 			case <-n.done:
 			}
-		case <-n.tickc:
+		case <-n.tickc: // timer
 			n.rn.Tick()
 		case readyc <- rd:
-			n.rn.acceptReady(rd)
+			n.rn.acceptReady(rd) //
 			advancec = n.advancec
 		case <-advancec:
 			n.rn.Advance(rd)
@@ -461,7 +461,7 @@ func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) 
 			return ErrStopped
 		}
 	}
-	ch := n.propc
+	ch := n.propc // 业务发起pro
 	pm := msgWithResult{m: m}
 	if wait {
 		pm.result = make(chan error, 1)

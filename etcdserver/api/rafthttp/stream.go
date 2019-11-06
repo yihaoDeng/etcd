@@ -432,7 +432,7 @@ func (cr *streamReader) run() {
 			} else {
 				plog.Infof("established a TCP streaming connection with peer %s (%s reader)", cr.peerID, cr.typ)
 			}
-			err = cr.decodeLoop(rc, t)
+			err = cr.decodeLoop(rc, t) // 接受数据
 			if cr.lg != nil {
 				cr.lg.Warn(
 					"lost TCP streaming connection with remote peer",

@@ -169,7 +169,7 @@ func (rn *RawNode) HasReady() bool {
 
 // Advance notifies the RawNode that the application has applied and saved progress in the
 // last Ready results.
-func (rn *RawNode) Advance(rd Ready) {
+func (rn *RawNode) Advance(rd Ready) { // 在上层调用
 	if !IsEmptyHardState(rd.HardState) {
 		rn.prevHardSt = rd.HardState
 	}

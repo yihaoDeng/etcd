@@ -79,8 +79,8 @@ type MemoryStorage struct {
 	// goroutine.
 	sync.Mutex
 
-	hardState pb.HardState
-	snapshot  pb.Snapshot
+	hardState pb.HardState // term, vote, commit
+	snapshot  pb.Snapshot  // (term、index, confstate) data
 	// ents[i] has raft log position i+snapshot.Metadata.Index
 	ents []pb.Entry
 }
@@ -203,12 +203,12 @@ func (ms *MemoryStorage) CreateSnapshot(i uint64, cs *pb.ConfState, data []byte)
 		raftLogger.Panicf("snapshot %d is out of bound lastindex(%d)", i, ms.lastIndex())
 	}
 
-	ms.snapshot.Metadata.Index = i
+	ms.snapshot.Metadata.Index = i // index存的是绝对值.
 	ms.snapshot.Metadata.Term = ms.ents[i-offset].Term
 	if cs != nil {
 		ms.snapshot.Metadata.ConfState = *cs
 	}
-	ms.snapshot.Data = data
+	ms.snapshot.Data = data // 快照中存有数据
 	return ms.snapshot, nil
 }
 

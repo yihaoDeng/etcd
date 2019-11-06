@@ -306,7 +306,7 @@ func (n *node) run() {
 	for {
 		if advancec != nil {
 			readyc = nil
-		} else if n.rn.HasReady() {
+		} else if n.rn.HasReady() { // 是不是状态发生了改变, 或者有消息需要发送
 			// Populate a Ready. Note that this Ready is not guaranteed to
 			// actually be handled. We will arm readyc, but there's no guarantee
 			// that we will actually send on it. It's possible that we will
@@ -380,7 +380,7 @@ func (n *node) run() {
 			case n.confstatec <- cs: // 等待集群成员发生改变. 该消息会传递到上层
 			case <-n.done:
 			}
-		case <-n.tickc: // timer
+		case <-n.tickc: // 最小计时器, heartbeat timeout/election timeout 都是它的倍数
 			n.rn.Tick()
 		case readyc <- rd:
 			n.rn.acceptReady(rd) //
@@ -461,6 +461,7 @@ func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) 
 			return ErrStopped
 		}
 	}
+	// Msg Prop 走chan propc, 其他走recvc
 	ch := n.propc // 业务发起pro
 	pm := msgWithResult{m: m}
 	if wait {

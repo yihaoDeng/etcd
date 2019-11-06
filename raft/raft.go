@@ -278,6 +278,7 @@ type raft struct {
 	lead uint64
 	// leadTransferee is id of the leader transfer target when its value is not zero.
 	// Follow the procedure defined in raft thesis 3.10.
+	// leader transfer  target
 	leadTransferee uint64
 	// Only one conf change may be pending (in the log, but not yet
 	// applied) at a time. This is enforced via pendingConfIndex, which
@@ -540,14 +541,14 @@ func (r *raft) bcastHeartbeat() {
 	if len(lastCtx) == 0 {
 		r.bcastHeartbeatWithCtx(nil)
 	} else {
-		r.bcastHeartbeatWithCtx([]byte(lastCtx))
+		r.bcastHeartbeatWithCtx([]byte(lastCtx)) // 客户端请求的唯一标识
 	}
 }
 
 func (r *raft) bcastHeartbeatWithCtx(ctx []byte) {
 	r.prs.Visit(func(id uint64, _ *tracker.Progress) {
 		if id == r.id {
-			return
+			return // 跳过本node
 		}
 		r.sendHeartbeat(id, ctx)
 	})
@@ -557,7 +558,7 @@ func (r *raft) advance(rd Ready) {
 	// If entries were applied (or a snapshot), update our cursor for
 	// the next Ready. Note that if the current HardState contains a
 	// new Commit index, this does not mean that we're also applying
-	// all of the new entries due to commit pagination by size.
+	// all of the new entries due to commit pagination by size. // pagination 页码
 	if index := rd.appliedCursor(); index > 0 {
 		r.raftLog.appliedTo(index)
 		if r.prs.Config.AutoLeave && index >= r.pendingConfIndex && r.state == StateLeader {
@@ -582,7 +583,7 @@ func (r *raft) advance(rd Ready) {
 			}
 		}
 	}
-	r.reduceUncommittedSize(rd.CommittedEntries)
+	r.reduceUncommittedSize(rd.CommittedEntries) // 按字节计算没有被commit的size,
 
 	if len(rd.Entries) > 0 {
 		e := rd.Entries[len(rd.Entries)-1]
@@ -662,7 +663,7 @@ func (r *raft) tickElection() {
 	if r.promotable() && r.pastElectionTimeout() {
 		r.electionElapsed = 0
 		r.Step(pb.Message{From: r.id, Type: pb.MsgHup})
-	}
+	} //pb.MsgHub 消息是当electionTimeout之后, 自己给自己发送的消息, 方便统一处理
 }
 
 // tickHeartbeat is run by leaders to send a MsgBeat after r.heartbeatTimeout.
@@ -687,6 +688,7 @@ func (r *raft) tickHeartbeat() {
 
 	if r.heartbeatElapsed >= r.heartbeatTimeout {
 		r.heartbeatElapsed = 0
+		// 发给自己的消息, 用来触发给peers的heartbeat动作
 		r.Step(pb.Message{From: r.id, Type: pb.MsgBeat})
 	}
 }
@@ -723,7 +725,7 @@ func (r *raft) becomePreCandidate() {
 	// r.Term or change r.Vote.
 	r.step = stepCandidate
 	r.prs.ResetVotes()
-	r.tick = r.tickElection
+	r.tick = r.tickElection // 函数指针,当timeout 到期的时候执行
 	r.lead = None
 	r.state = StatePreCandidate
 	r.logger.Infof("%x became pre-candidate at term %d", r.id, r.Term)
@@ -734,9 +736,9 @@ func (r *raft) becomeLeader() {
 	if r.state == StateFollower {
 		panic("invalid transition [follower -> leader]")
 	}
-	r.step = stepLeader
+	r.step = stepLeader //函数指针, 消息到达时候的处理函数
 	r.reset(r.Term)
-	r.tick = r.tickHeartbeat
+	r.tick = r.tickHeartbeat // 函数指针,当timeout 到期的时候执行
 	r.lead = r.id
 	r.state = StateLeader
 	// Followers enter replicate mode when they've been successfully probed
@@ -991,6 +993,7 @@ func (r *raft) Step(m pb.Message) error {
 
 type stepFunc func(r *raft, m pb.Message) error
 
+// leader 对于各种消息的处理
 func stepLeader(r *raft, m pb.Message) error {
 	// These message types do not require any progress for m.From.
 	switch m.Type {
@@ -1005,8 +1008,9 @@ func stepLeader(r *raft, m pb.Message) error {
 		// TODO(tbg): I added a TODO in removeNode, it doesn't seem that the
 		// leader steps down when removing itself. I might be missing something.
 		if pr := r.prs.Progress[r.id]; pr != nil {
-			pr.RecentActive = true
+			pr.RecentActive = true // 标识本node 还是active状态
 		}
+		// 这里涉及到集群成员变化
 		if !r.prs.QuorumActive() {
 			r.logger.Warningf("%x stepped down to follower since quorum is not active", r.id)
 			r.becomeFollower(r.Term, None)
@@ -1023,6 +1027,7 @@ func stepLeader(r *raft, m pb.Message) error {
 		if len(m.Entries) == 0 {
 			r.logger.Panicf("%x stepped empty MsgProp", r.id)
 		}
+		// 如果本node 已经不是集群中的成员, 那么
 		if r.prs.Progress[r.id] == nil {
 			// If we are not currently a member of the range (i.e. this node
 			// was removed from the configuration while serving as leader),
@@ -1032,17 +1037,19 @@ func stepLeader(r *raft, m pb.Message) error {
 		if r.leadTransferee != None {
 			r.logger.Debugf("%x [term %d] transfer leadership to %x is in progress; dropping proposal", r.id, r.Term, r.leadTransferee)
 			return ErrProposalDropped
-		}
+		} // 正在做tranfer leader, 那么直接返回错误
 
 		for i := range m.Entries {
 			e := &m.Entries[i]
 			var cc pb.ConfChangeI
+			// 做成员变更
 			if e.Type == pb.EntryConfChange {
 				var ccc pb.ConfChange
 				if err := ccc.Unmarshal(e.Data); err != nil {
 					panic(err)
 				}
 				cc = ccc
+				// 做成员变更
 			} else if e.Type == pb.EntryConfChangeV2 {
 				var ccc pb.ConfChangeV2
 				if err := ccc.Unmarshal(e.Data); err != nil {
@@ -1078,10 +1085,10 @@ func stepLeader(r *raft, m pb.Message) error {
 		}
 		r.bcastAppend()
 		return nil
-	case pb.MsgReadIndex:
+	case pb.MsgReadIndex: // 线性读
 		// If more than the local vote is needed, go through a full broadcast,
 		// otherwise optimize.
-		if !r.prs.IsSingleton() {
+		if !r.prs.IsSingleton() { // 当并非一个成员的时候, 且在当前term 没有做任何的commit, 则直接返回
 			if r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(r.raftLog.committed)) != r.Term {
 				// Reject read only request when this leader has not committed any log entry at its term.
 				return nil
@@ -1097,7 +1104,7 @@ func stepLeader(r *raft, m pb.Message) error {
 				r.readOnly.recvAck(r.id, m.Entries[0].Data)
 				r.bcastHeartbeatWithCtx(m.Entries[0].Data)
 			case ReadOnlyLeaseBased:
-				ri := r.raftLog.committed
+				ri := r.raftLog.committed             // 获取commit idx
 				if m.From == None || m.From == r.id { // from local member
 					r.readStates = append(r.readStates, ReadState{Index: ri, RequestCtx: m.Entries[0].Data})
 				} else {
@@ -1115,6 +1122,8 @@ func stepLeader(r *raft, m pb.Message) error {
 		return nil
 	}
 
+	// 根据m.from的id, 找到相应的progress, 然后更新progress, 继而更新该node的一些状态
+	// 在leader眼里, follower 有几种状态, probe/repl/snapshot
 	// All other message types require a progress for m.From (pr).
 	pr := r.prs.Progress[m.From]
 	if pr == nil {
@@ -1122,20 +1131,21 @@ func stepLeader(r *raft, m pb.Message) error {
 		return nil
 	}
 	switch m.Type {
-	case pb.MsgAppResp:
-		pr.RecentActive = true
+	case pb.MsgAppResp: // 向其他节点同步数据
+		pr.RecentActive = true // 该节点是存活状态
 
+		// 同步失败
 		if m.Reject {
 			r.logger.Debugf("%x received MsgAppResp(MsgApp was rejected, lastindex: %d) from %x for index %d",
 				r.id, m.RejectHint, m.From, m.Index)
-			if pr.MaybeDecrTo(m.Index, m.RejectHint) {
+			if pr.MaybeDecrTo(m.Index, m.RejectHint) { //向leader汇报m.index 表示已经commit的日志ID
 				r.logger.Debugf("%x decreased progress of %x to [%s]", r.id, m.From, pr)
 				if pr.State == tracker.StateReplicate {
 					pr.BecomeProbe()
 				}
 				r.sendAppend(m.From)
 			}
-		} else {
+		} else { // 同步成功
 			oldPaused := pr.IsPaused()
 			if pr.MaybeUpdate(m.Index) {
 				switch {
@@ -1298,20 +1308,20 @@ func stepCandidate(r *raft, m pb.Message) error {
 		r.becomeFollower(m.Term, m.From) // always m.Term == r.Term
 		r.handleSnapshot(m)
 	case myVoteRespType:
-		gr, rj, res := r.poll(m.From, m.Type, !m.Reject)
+		gr, rj, res := r.poll(m.From, m.Type, !m.Reject) // 计算当前集群有多少投票, 多少反对, 由于涉及到config change所以这里的逻辑稍显复杂
 		r.logger.Infof("%x has received %d %s votes and %d vote rejections", r.id, gr, m.Type, rj)
 		switch res {
 		case quorum.VoteWon:
 			if r.state == StatePreCandidate {
-				r.campaign(campaignElection)
+				r.campaign(campaignElection) // 如果选举处理prevote,则发起一轮选举
 			} else {
-				r.becomeLeader()
+				r.becomeLeader() // 否则的话, 直接成功leader
 				r.bcastAppend()
 			}
 		case quorum.VoteLost:
 			// pb.MsgPreVoteResp contains future term of pre-candidate
 			// m.Term > r.Term; reuse r.Term
-			r.becomeFollower(r.Term, None)
+			r.becomeFollower(r.Term, None) // 直接变成follower
 		}
 	case pb.MsgTimeoutNow:
 		r.logger.Debugf("%x [term %d state %v] ignored MsgTimeoutNow from %x", r.id, r.Term, r.state, m.From)

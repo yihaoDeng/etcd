@@ -871,6 +871,7 @@ func (s *EtcdServer) RaftHandler() http.Handler { return s.r.transport.Handler()
 
 // Process takes a raft message and applies it to the server's raft state
 // machine, respecting any timeout of the given context.
+//EtcdServer实现了rafthttp中的Process接口
 func (s *EtcdServer) Process(ctx context.Context, m raftpb.Message) error {
 	if s.cluster.IsIDRemoved(types.ID(m.From)) {
 		if lg := s.getLogger(); lg != nil {

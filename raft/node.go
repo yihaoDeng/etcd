@@ -409,6 +409,7 @@ func (n *node) Tick() {
 	}
 }
 
+// 比较特殊的一个函数, 发起选主请求
 func (n *node) Campaign(ctx context.Context) error { return n.step(ctx, pb.Message{Type: pb.MsgHup}) }
 
 func (n *node) Propose(ctx context.Context, data []byte) error {
@@ -462,7 +463,7 @@ func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) 
 		}
 	}
 	// Msg Prop 走chan propc, 其他走recvc
-	ch := n.propc // 业务发起pro
+	ch := n.propc // 业务发起pro, 业务发起的prop一般需要等结果的
 	pm := msgWithResult{m: m}
 	if wait {
 		pm.result = make(chan error, 1)

@@ -827,7 +827,7 @@ func (r *raft) poll(id uint64, t pb.MessageType, v bool) (granted int, rejected 
 	} else {
 		r.logger.Infof("%x received %s rejection from %x at term %d", r.id, t, id, r.Term)
 	}
-	r.prs.RecordVote(id, v)
+	r.prs.RecordVote(id, v) //
 	return r.prs.TallyVotes()
 }
 
@@ -1151,10 +1151,7 @@ func stepLeader(r *raft, m pb.Message) error {
 				switch {
 				case pr.State == tracker.StateProbe:
 					pr.BecomeReplicate()
-				case pr.State == tracker.StateSnapshot && pr.Match >= pr.PendingSnapshot:
-					// TODO(tbg): we should also enter this branch if a snapshot is
-					// received that is below pr.PendingSnapshot but which makes it
-					// possible to use the log again.
+				case pr.State == tracker.StateSnapshot && pr.Match >= pr.PendingSnapshot: // TODO(tbg): we should also enter this branch if a snapshot is // received that is below pr.PendingSnapshot but which makes it // possible to use the log again.
 					r.logger.Debugf("%x recovered from needing snapshot, resumed sending replication messages to %x [%s]", r.id, m.From, pr)
 					// Transition back to replicating state via probing state
 					// (which takes the snapshot into account). If we didn't
@@ -1293,12 +1290,12 @@ func stepCandidate(r *raft, m pb.Message) error {
 		myVoteRespType = pb.MsgPreVoteResp
 	} else {
 		myVoteRespType = pb.MsgVoteResp
-	}
+	} // 如果当前是PreCandidate, 那么就是MsgVoteResp, 否则的话, 就是MsgVoteResp
 	switch m.Type {
-	case pb.MsgProp:
+	case pb.MsgProp: // 这种消息直接忽略
 		r.logger.Infof("%x no leader at term %d; dropping proposal", r.id, r.Term)
 		return ErrProposalDropped
-	case pb.MsgApp:
+	case pb.MsgApp: // 复制log状态
 		r.becomeFollower(m.Term, m.From) // always m.Term == r.Term
 		r.handleAppendEntries(m)
 	case pb.MsgHeartbeat:

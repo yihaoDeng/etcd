@@ -20,12 +20,30 @@ import pb "go.etcd.io/etcd/raft/raftpb"
 // Note that unstable.offset may be less than the highest log
 // position in storage; this means that the next write to storage
 // might need to truncate the log before persisting unstable.entries.
+
+/*
+*                              offset
+*  |-----------snapshot---------|--------entries-------------|
+*
+ */
+
+/*
+*
+* maybeFirstIndex：返回unstable数据的第一条数据索引。因为只有快照数据在最前面，因此这个函数只有当快照数据存在的时候才能拿到第一条数据索引，其他的情况下已经拿不到了。
+* maybeLastIndex：返回最后一条数据的索引。因为是entries数据在后，而快照数据在前，所以取最后一条数据索引是从entries开始查，查不到的情况下才查快照数据。
+* stableSnapTo：该函数传入一个索引i，用于告诉unstable，索引i对应的快照数据已经被应用层持久化了，如果这个索引与当前快照数据对应的上，那么快照数据就可以被置空了。
+* restore：从快照数据中恢复，此时unstable将保存快照数据，同时将offset成员设置成这个快照数据索引的下一位。
+* slice：返回索引范围在[lo-u.offset : hi-u.offset]之间的数据。
+* mustCheckOutOfBounds：检查传入的数据索引范围是否合理
+*
+*
+ */
 type unstable struct {
 	// the incoming unstable snapshot, if any.
 	snapshot *pb.Snapshot
 	// all entries that have not yet been written to storage.
 	entries []pb.Entry
-	offset  uint64
+	offset  uint64 // 保存的是entries数组中的第一条数据在raft日志中的索引
 
 	logger Logger
 }
@@ -51,6 +69,7 @@ func (u *unstable) maybeLastIndex() (uint64, bool) {
 	return 0, false
 }
 
+//* maybeTerm：这个函数根据传入的日志数据索引，得到这个日志对应的任期号。前面已经提过，unstable.offset是快照数据和entries数组的分界线，因为在这个函数中，会区分传入的参数与offset的大小关系，小于offset的情况下在快照数据中查询，否则就在entries数组中查询了。
 // maybeTerm returns the term of the entry at index i, if there
 // is any.
 func (u *unstable) maybeTerm(i uint64) (uint64, bool) {
@@ -72,6 +91,8 @@ func (u *unstable) maybeTerm(i uint64) (uint64, bool) {
 	return u.entries[i-u.offset].Term, true
 }
 
+//* stableTo：该函数传入一个索引号i和任期号t，表示应用层已经将这个索引之前的数据进行持久化了，
+//此时unstable要做的事情就是在自己的数据中查询，只有在满足任期号相同以及i大于等于offset的情况下，可以将entries中的数据进行缩容，将i之前的数据删除。
 func (u *unstable) stableTo(i, t uint64) {
 	gt, ok := u.maybeTerm(i)
 	if !ok {
@@ -117,6 +138,8 @@ func (u *unstable) restore(s pb.Snapshot) {
 	u.entries = nil
 	u.snapshot = &s
 }
+
+//* truncateAndAppend：传入日志条目数组，这段数据将添加到entries数组中。但是需要注意的是，传入的数据跟现有的entries数据可能有重合的部分，所以需要根据unstable.offset与传入数据的索引大小关系进行处理，有些数据可能会被截断。
 
 func (u *unstable) truncateAndAppend(ents []pb.Entry) {
 	after := ents[0].Index

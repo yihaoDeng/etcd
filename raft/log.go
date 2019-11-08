@@ -234,7 +234,7 @@ func (l *raftLog) term(i uint64) (uint64, error) {
 	if i < dummyIndex || i > l.lastIndex() {
 		// TODO: return an error instead?
 		return 0, nil
-	}
+	} // 不在合理的term中
 
 	if t, ok := l.unstable.maybeTerm(i); ok {
 		return t, nil

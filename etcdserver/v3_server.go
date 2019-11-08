@@ -646,7 +646,7 @@ func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.In
 
 	start := time.Now()
 	err = s.r.Propose(cctx, data) // 发起一个提议
-	if err != nil {
+	if err != nil {               // 出错了, 直接返回
 		proposalsFailed.Inc()
 		s.w.Trigger(id, nil) // GC wait
 		return nil, err
@@ -694,6 +694,7 @@ func (s *EtcdServer) linearizableReadLoop() {
 
 		lg := s.getLogger()
 		cctx, cancel := context.WithTimeout(context.Background(), s.Cfg.ReqTimeout())
+		// 发起线性读, 每一个req 产生一个unique id
 		if err := s.r.ReadIndex(cctx, ctxToSend); err != nil {
 			cancel()
 			if err == raft.ErrStopped {

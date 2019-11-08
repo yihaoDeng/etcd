@@ -559,6 +559,7 @@ func (r *raft) advance(rd Ready) {
 	// the next Ready. Note that if the current HardState contains a
 	// new Commit index, this does not mean that we're also applying
 	// all of the new entries due to commit pagination by size. // pagination 页码
+	// applied所有的commit的数据
 	if index := rd.appliedCursor(); index > 0 {
 		r.raftLog.appliedTo(index)
 		if r.prs.Config.AutoLeave && index >= r.pendingConfIndex && r.state == StateLeader {
@@ -587,7 +588,7 @@ func (r *raft) advance(rd Ready) {
 
 	if len(rd.Entries) > 0 {
 		e := rd.Entries[len(rd.Entries)-1]
-		r.raftLog.stableTo(e.Index, e.Term)
+		r.raftLog.stableTo(e.Index, e.Term) //
 	}
 	if !IsEmptySnap(rd.Snapshot) {
 		r.raftLog.stableSnapTo(rd.Snapshot.Metadata.Index)
@@ -598,7 +599,7 @@ func (r *raft) advance(rd Ready) {
 // the commit index changed (in which case the caller should call
 // r.bcastAppend).
 func (r *raft) maybeCommit() bool {
-	mci := r.prs.Committed()
+	mci := r.prs.Committed() // 这里是最热点的代码部分
 	return r.raftLog.maybeCommit(mci, r.Term)
 }
 
@@ -650,9 +651,9 @@ func (r *raft) appendEntry(es ...pb.Entry) (accepted bool) {
 	}
 	// use latest "last" index after truncate/append
 	li = r.raftLog.append(es...)
-	r.prs.Progress[r.id].MaybeUpdate(li)
+	r.prs.Progress[r.id].MaybeUpdate(li) // 记录r.id 当前日志到index
 	// Regardless of maybeCommit's return, our caller will call bcastAppend.
-	r.maybeCommit()
+	r.maybeCommit() //查看是否可以提交了
 	return true
 }
 
@@ -754,7 +755,7 @@ func (r *raft) becomeLeader() {
 	// could be expensive.
 	r.pendingConfIndex = r.raftLog.lastIndex()
 
-	emptyEnt := pb.Entry{Data: nil}
+	emptyEnt := pb.Entry{Data: nil} //  成为leader之后, 必须先发空消息
 	if !r.appendEntry(emptyEnt) {
 		// This won't happen because we just called reset() above.
 		r.logger.Panic("empty entry was dropped")
@@ -781,7 +782,7 @@ func (r *raft) campaign(t CampaignType) {
 		r.becomePreCandidate()
 		voteMsg = pb.MsgPreVote
 		// PreVote RPCs are sent for the next term before we've incremented r.Term.
-		term = r.Term + 1
+		term = r.Term + 1 // 自身term 不变, 只是在按照 term + 1 发送数据
 	} else {
 		r.becomeCandidate()
 		voteMsg = pb.MsgVote
@@ -839,6 +840,7 @@ func (r *raft) Step(m pb.Message) error {
 	case m.Term > r.Term:
 		if m.Type == pb.MsgVote || m.Type == pb.MsgPreVote {
 			force := bytes.Equal(m.Context, []byte(campaignTransfer))
+			//  如果在自己的收到term 比较打消息 且在该节点的最小的minimum selection timeout, 则不响应
 			inLease := r.checkQuorum && r.lead != None && r.electionElapsed < r.electionTimeout
 			if !force && inLease {
 				// If a server receives a RequestVote request within the minimum election timeout
@@ -848,8 +850,9 @@ func (r *raft) Step(m pb.Message) error {
 				return nil
 			}
 		}
+
 		switch {
-		case m.Type == pb.MsgPreVote:
+		case m.Type == pb.MsgPreVote: // 只是preVote消息,
 			// Never change our term in response to a PreVote
 		case m.Type == pb.MsgPreVoteResp && !m.Reject:
 			// We send pre-vote requests with a term in our future. If the
@@ -923,6 +926,7 @@ func (r *raft) Step(m pb.Message) error {
 			}
 
 			r.logger.Infof("%x is starting a new election at term %d", r.id, r.Term)
+			// 由配置决定
 			if r.preVote {
 				r.campaign(campaignPreElection)
 			} else {
@@ -1075,6 +1079,7 @@ func stepLeader(r *raft, m pb.Message) error {
 					r.logger.Infof("%x ignoring conf change %v at config %s: %s", r.id, cc, r.prs.Config, refused)
 					m.Entries[i] = pb.Entry{Type: pb.EntryNormal}
 				} else {
+					// absolute index, i start from 0
 					r.pendingConfIndex = r.raftLog.lastIndex() + uint64(i) + 1
 				}
 			}
@@ -1097,6 +1102,11 @@ func stepLeader(r *raft, m pb.Message) error {
 			// thinking: use an interally defined context instead of the user given context.
 			// We can express this in terms of the term and index instead of a user-supplied value.
 			// This would allow multiple reads to piggyback on the same message.
+
+			//根据 Raft 论文 6.4 章的内容，etcd 通过 ReadIndex 优化读取的操作核心为以下两个指导原则：
+			// 让Leader 处理 ReadIndex 请求，Leader 获取的 commit index 即为状态机的 read index，follower 收到 ReadIndex 请求时需要将请求 forward 给 Leader；
+			// 保证Leader 仍然是目前的 Leader，防止因为网络分区原因，Leader 已经不再是当前的 Leader，需要 Leader 广播向 quorum 进行确认。
+			// ReadIndex 同时也允许了集群的每个 member 响应读请求。当 member 利用 ReadIndex 方法确保了当前所读的 key 的操作日志已经被 apply 后，便可返回客户端读取的值。对 etcd ReadIndex 的实现
 			switch r.readOnly.option {
 			case ReadOnlySafe:
 				r.readOnly.addRequest(r.raftLog.committed, m)
@@ -1182,12 +1192,12 @@ func stepLeader(r *raft, m pb.Message) error {
 				// Transfer leadership is in progress.
 				if m.From == r.leadTransferee && pr.Match == r.raftLog.lastIndex() {
 					r.logger.Infof("%x sent MsgTimeoutNow to %x after received MsgAppResp", r.id, m.From)
-					r.sendTimeoutNow(m.From)
+					r.sendTimeoutNow(m.From) // 收复到MsgAppResp之后, 如果发现该pr上日志已经到最新, 且是目标transferee, 则直接给follower发消息, election timouet, 直接发起新一轮选举
 				}
 			}
 		}
 	case pb.MsgHeartbeatResp:
-		pr.RecentActive = true
+		pr.RecentActive = true // 那个节点还存活着
 		pr.ProbeSent = false
 
 		// free one slot for the full inflights window to allow progress.
@@ -1270,7 +1280,7 @@ func stepLeader(r *raft, m pb.Message) error {
 		r.electionElapsed = 0
 		r.leadTransferee = leadTransferee
 		if pr.Match == r.raftLog.lastIndex() {
-			r.sendTimeoutNow(leadTransferee)
+			r.sendTimeoutNow(leadTransferee) // 给follower发送消息,不用等election timeout, 直接选举
 			r.logger.Infof("%x sends MsgTimeoutNow to %x immediately as %x already has up-to-date log", r.id, leadTransferee, leadTransferee)
 		} else {
 			r.sendAppend(leadTransferee)
@@ -1336,20 +1346,20 @@ func stepFollower(r *raft, m pb.Message) error {
 			r.logger.Infof("%x not forwarding to leader %x at term %d; dropping proposal", r.id, r.lead, r.Term)
 			return ErrProposalDropped
 		}
-		m.To = r.lead
-		r.send(m)
+		m.To = r.lead // 这种消息应该转发给leader
+		r.send(m)     // 直接放在自己的缓存中, ready时触发
 	case pb.MsgApp:
 		r.electionElapsed = 0
 		r.lead = m.From
-		r.handleAppendEntries(m)
+		r.handleAppendEntries(m) // 复制从leader过来的消息
 	case pb.MsgHeartbeat:
 		r.electionElapsed = 0
 		r.lead = m.From
-		r.handleHeartbeat(m)
+		r.handleHeartbeat(m) // 相应leader的heartbeat, 顺便更新自己的commit消息
 	case pb.MsgSnap:
 		r.electionElapsed = 0
 		r.lead = m.From
-		r.handleSnapshot(m)
+		r.handleSnapshot(m) // 响应leader发送过来的快照数据
 	case pb.MsgTransferLeader:
 		if r.lead == None {
 			r.logger.Infof("%x no leader at term %d; dropping leader transfer msg", r.id, r.Term)
@@ -1373,7 +1383,7 @@ func stepFollower(r *raft, m pb.Message) error {
 			return nil
 		}
 		m.To = r.lead
-		r.send(m)
+		r.send(m) // 转发给你leader
 	case pb.MsgReadIndexResp:
 		if len(m.Entries) != 1 {
 			r.logger.Errorf("%x invalid format of MsgReadIndexResp from %x, entries count: %d", r.id, m.From, len(m.Entries))
@@ -1400,7 +1410,7 @@ func (r *raft) handleAppendEntries(m pb.Message) {
 }
 
 func (r *raft) handleHeartbeat(m pb.Message) {
-	r.raftLog.commitTo(m.Commit)
+	r.raftLog.commitTo(m.Commit) // 通过heartbeat中的消息更新raftlog 的commit
 	r.send(pb.Message{To: m.From, Type: pb.MsgHeartbeatResp, Context: m.Context})
 }
 
@@ -1498,7 +1508,7 @@ func (r *raft) restore(s pb.Snapshot) bool {
 // promotable indicates whether state machine can be promoted to leader,
 // which is true when its own id is in progress list.
 func (r *raft) promotable() bool {
-	pr := r.prs.Progress[r.id]
+	pr := r.prs.Progress[r.id] // 是否可以被提升为leader
 	return pr != nil && !pr.IsLearner
 }
 
@@ -1550,7 +1560,7 @@ func (r *raft) switchToConfig(cfg tracker.Config, prs tracker.ProgressMap) pb.Co
 		// TODO(tbg): step down (for sanity) and ask follower with largest Match
 		// to TimeoutNow (to avoid interruption). This might still drop some
 		// proposals but it's better than nothing.
-		//
+		// 是否可以被提升为leader//
 		// TODO(tbg): test this branch. It is untested at the time of writing.
 		return cs
 	}

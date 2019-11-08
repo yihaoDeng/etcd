@@ -149,7 +149,7 @@ func (ms *MemoryStorage) LastIndex() (uint64, error) {
 
 func (ms *MemoryStorage) lastIndex() uint64 {
 	return ms.ents[0].Index + uint64(len(ms.ents)) - 1
-}
+} // 这里返回的是绝对值
 
 // FirstIndex implements the Storage interface.
 func (ms *MemoryStorage) FirstIndex() (uint64, error) {

@@ -233,7 +233,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				}
 
 				// gofail: var raftBeforeSave struct{}
-				// 写入WAL
+				// 写入WAL, 这里面全是需要
 				if err := r.storage.Save(rd.HardState, rd.Entries); err != nil {
 					if r.lg != nil {
 						r.lg.Fatal("failed to save Raft hard state and entries", zap.Error(err))
@@ -333,6 +333,7 @@ func updateCommittedIndex(ap *apply, rh *raftReadyHandler) {
 	}
 }
 
+// 这里只包含发向一个节点的数据
 func (r *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
 	sentAppResp := false
 	for i := len(ms) - 1; i >= 0; i-- {
@@ -340,6 +341,7 @@ func (r *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
 			ms[i].To = 0
 		} //如果目标节点已经被删除, 那么这条消息不用再发送了
 
+		// 消息去重
 		if ms[i].Type == raftpb.MsgAppResp {
 			if sentAppResp {
 				ms[i].To = 0
@@ -347,7 +349,7 @@ func (r *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
 				sentAppResp = true
 			}
 		}
-		//如果该条消息是快照消息, 那么需要其他goroutine触发, 这里只是发送一个msg, 发送应用层的ApplyAll, 在哪边做处理
+		//如果该条消息是快照消息, 那么需要其他goroutine实际触发, 这里只是发送一个msg, 发送到应用层的ApplyAll, 在那边做处理
 		if ms[i].Type == raftpb.MsgSnap {
 			// There are two separate data store: the store for v2, and the KV for v3.
 			// The msgSnap only contains the most recent snapshot of store without KV.
@@ -363,7 +365,7 @@ func (r *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
 		// 如果是hb msg, 检测一下, 上次发消息的时间, 如果超过阈值, 打日志
 		//TODO(dengyihao), 这里检测是hb的interval还是msg的interval
 		if ms[i].Type == raftpb.MsgHeartbeat {
-			ok, exceed := r.td.Observe(ms[i].To)
+			ok, exceed := r.td.Observe(ms[i].To) // 检测需要hb的node
 			if !ok {
 				// TODO: limit request rate.
 				if r.lg != nil {

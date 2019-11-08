@@ -430,6 +430,7 @@ func confChangeToMsg(c pb.ConfChangeI) (pb.Message, error) {
 	if err != nil {
 		return pb.Message{}, err
 	}
+	// conf change 作为prop消息发送过去
 	return pb.Message{Type: pb.MsgProp, Entries: []pb.Entry{{Type: typ, Data: data}}}, nil
 }
 

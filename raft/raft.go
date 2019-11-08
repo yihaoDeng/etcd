@@ -588,7 +588,7 @@ func (r *raft) advance(rd Ready) {
 
 	if len(rd.Entries) > 0 {
 		e := rd.Entries[len(rd.Entries)-1]
-		r.raftLog.stableTo(e.Index, e.Term) //
+		r.raftLog.stableTo(e.Index, e.Term) //在这里才开始shrink
 	}
 	if !IsEmptySnap(rd.Snapshot) {
 		r.raftLog.stableSnapTo(rd.Snapshot.Metadata.Index)

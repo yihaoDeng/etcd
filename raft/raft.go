@@ -1103,16 +1103,18 @@ func stepLeader(r *raft, m pb.Message) error {
 			// We can express this in terms of the term and index instead of a user-supplied value.
 			// This would allow multiple reads to piggyback on the same message.
 
-			//根据 Raft 论文 6.4 章的内容，etcd 通过 ReadIndex 优化读取的操作核心为以下两个指导原则：
-			// 让Leader 处理 ReadIndex 请求，Leader 获取的 commit index 即为状态机的 read index，follower 收到 ReadIndex 请求时需要将请求 forward 给 Leader；
+			//根据 Raft 博士论文的内容，etcd 通过 ReadIndex 优化读取的操作核心为以下两个指导原则：
+			// 让Leader 处理 ReadIndex 请求，Leader 获取的 commit index 即为状态机的 read index，如果是follower 收到 ReadIndex 请求时需要将请求 forward 给 Leader；
 			// 保证Leader 仍然是目前的 Leader，防止因为网络分区原因，Leader 已经不再是当前的 Leader，需要 Leader 广播向 quorum 进行确认。
 			// ReadIndex 同时也允许了集群的每个 member 响应读请求。当 member 利用 ReadIndex 方法确保了当前所读的 key 的操作日志已经被 apply 后，便可返回客户端读取的值。对 etcd ReadIndex 的实现
+			// readStatus中的信息就是commit index和请求id,
 			switch r.readOnly.option {
 			case ReadOnlySafe:
 				r.readOnly.addRequest(r.raftLog.committed, m)
 				// The local node automatically acks the request.
 				r.readOnly.recvAck(r.id, m.Entries[0].Data)
-				r.bcastHeartbeatWithCtx(m.Entries[0].Data)
+				r.bcastHeartbeatWithCtx(m.Entries[0].Data) // leader需要follower的确认,这一步就是确认自己确实是leader
+
 			case ReadOnlyLeaseBased:
 				ri := r.raftLog.committed             // 获取commit idx
 				if m.From == None || m.From == r.id { // from local member

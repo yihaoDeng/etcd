@@ -170,7 +170,10 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 			select {
 			case <-r.ticker.C:
 				r.tick()
-			case rd := <-r.Ready(): // 待commit 的数据
+				//  待commit 的数据,  rd 里面也携带了其他信息, 比如已经commited Entry、待发送的消息,
+				// 由于raft只实现了状态机的部分, 所以发送数据, 持久化状态都在外部在做
+				// 只要有待发送的数据
+			case rd := <-r.Ready():
 				if rd.SoftState != nil {
 					newLeader := rd.SoftState.Lead != raft.None && rh.getLead() != rd.SoftState.Lead
 					if newLeader {
@@ -194,7 +197,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 
 					r.td.Reset()
 				}
-				// 实现线性读, 这个之后再解释
+				// 实现线性读, 这个之后再解释,这里可以跟踪linearizableReadLoop()中的逻辑
 				if len(rd.ReadStates) != 0 {
 					select {
 					case r.readStateC <- rd.ReadStates[len(rd.ReadStates)-1]:
@@ -234,6 +237,7 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 
 				// gofail: var raftBeforeSave struct{}
 				// 写入WAL, 这里面全是需要
+				//
 				if err := r.storage.Save(rd.HardState, rd.Entries); err != nil {
 					if r.lg != nil {
 						r.lg.Fatal("failed to save Raft hard state and entries", zap.Error(err))

@@ -237,7 +237,10 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 
 				// gofail: var raftBeforeSave struct{}
 				// 写入WAL, 这里面全是需要
-				//
+				// wal 的回放过程
+				// 1>加载最新的快照 。
+				// 2>打开 WAL 文件目录，找到最新的快照以后的日志文件，这些是需要被 回放的日志 。
+				// 3> 读出所有 需要 回放的日志项发送给 Raft 协议层， Raft 协议层就可以将 日志同步给其他节点了
 				if err := r.storage.Save(rd.HardState, rd.Entries); err != nil {
 					if r.lg != nil {
 						r.lg.Fatal("failed to save Raft hard state and entries", zap.Error(err))

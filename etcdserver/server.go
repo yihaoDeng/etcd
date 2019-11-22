@@ -2372,6 +2372,8 @@ func (s *EtcdServer) snapshot(snapi uint64, confState raftpb.ConfState) {
 		}
 		// SaveSnap saves the snapshot and releases the locked wal files
 		// to the snapshot index.
+		// wal不能无限增长, 需要存储快照的状态,  另外, 快照中携带了commited index, 所以commited idx之前的可以释放了
+		//
 		if err = s.r.storage.SaveSnap(snap); err != nil {
 			if lg != nil {
 				lg.Panic("failed to save snapshot", zap.Error(err))

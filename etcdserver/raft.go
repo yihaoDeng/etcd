@@ -172,7 +172,8 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 				r.tick()
 				//  待commit 的数据,  rd 里面也携带了其他信息, 比如已经commited Entry、待发送的消息,
 				// 由于raft只实现了状态机的部分, 所以发送数据, 持久化状态都在外部在做
-				// 只要有待发送的数据
+				// 至于具体那个会触发这个, 可以参见raft包中的HasReady()
+
 			case rd := <-r.Ready():
 				if rd.SoftState != nil {
 					newLeader := rd.SoftState.Lead != raft.None && rh.getLead() != rd.SoftState.Lead
@@ -276,8 +277,8 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 					// gofail: var raftAfterApplySnap struct{}
 				}
 
-				r.raftStorage.Append(rd.Entries) //applied msg, 该raft 的实现里, 这是的raftStorage是纯内存的, 所以要进程挂掉, 还是要依赖WAL来恢复
-
+				// 这里是需要放在待commited的数据
+				r.raftStorage.Append(rd.Entries)
 				// 本节点不是leader的话, 那么执行下面的流程
 				if !islead {
 					// finish processing incoming messages before we signal raftdone chan
@@ -534,8 +535,8 @@ func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *member
 	if snapshot != nil {
 		s.ApplySnapshot(*snapshot)
 	}
-	s.SetHardState(st)
-	s.Append(ents)
+	s.SetHardState(st) // 设置hardState
+	s.Append(ents)     //设置当前还没有提交的ents
 	c := &raft.Config{
 		ID:              uint64(id),
 		ElectionTick:    cfg.ElectionTicks,

@@ -43,7 +43,7 @@ type unstable struct {
 	snapshot *pb.Snapshot
 	// all entries that have not yet been written to storage.
 	entries []pb.Entry
-	offset  uint64 // 保存的是entries数组中的第一条数据在raft日志中的索引
+	offset  uint64 // 保存的是entries数组中的第一条数据在raft日志中的索引,  所以这个是个绝对值
 
 	logger Logger
 }

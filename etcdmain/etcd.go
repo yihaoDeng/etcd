@@ -56,9 +56,11 @@ var (
 func startEtcdOrProxyV2() {
 	grpc.EnableTracing = false
 
+	// 打开config
 	cfg := newConfig()
 	defaultInitialCluster := cfg.ec.InitialCluster
 
+	// 命令行中
 	err := cfg.parse(os.Args[1:])
 	lg := cfg.ec.GetLogger()
 	if err != nil {
@@ -128,6 +130,7 @@ func startEtcdOrProxyV2() {
 	var stopped <-chan struct{}
 	var errc <-chan error
 
+	//返回值是目录类型, 从目录类型中就可判断是etcd storage 还是etcd 代理
 	which := identifyDataDirOrDie(cfg.ec.GetLogger(), cfg.ec.Dir)
 	if which != dirEmpty {
 		if lg != nil {
@@ -141,7 +144,7 @@ func startEtcdOrProxyV2() {
 		}
 		switch which {
 		case dirMember:
-			stopped, errc, err = startEtcd(&cfg.ec)
+			stopped, errc, err = startEtcd(&cfg.ec) // 启动etcd
 		case dirProxy:
 			err = startProxy(cfg)
 		default:
@@ -154,10 +157,11 @@ func startEtcdOrProxyV2() {
 				plog.Panicf("unhandled dir type %v", which)
 			}
 		}
-	} else {
+
+	} else { // 空目录, 由配置文件判断是不是proxy
 		shouldProxy := cfg.isProxy()
 		if !shouldProxy {
-			stopped, errc, err = startEtcd(&cfg.ec)
+			stopped, errc, err = startEtcd(&cfg.ec) // 启动etcd
 			if derr, ok := err.(*etcdserver.DiscoveryError); ok && derr.Err == v2discovery.ErrFullCluster {
 				if cfg.shouldFallbackToProxy() {
 					if lg != nil {
@@ -177,11 +181,12 @@ func startEtcdOrProxyV2() {
 				}
 			}
 		}
+		// 按proxy启动
 		if shouldProxy {
 			err = startProxy(cfg)
 		}
 	}
-
+	//如果出错, 做相应处理
 	if err != nil {
 		if derr, ok := err.(*etcdserver.DiscoveryError); ok {
 			switch derr.Err {
@@ -299,7 +304,7 @@ func startEtcdOrProxyV2() {
 
 // startEtcd runs StartEtcd in addition to hooks needed for standalone etcd.
 func startEtcd(cfg *embed.Config) (<-chan struct{}, <-chan error, error) {
-	e, err := embed.StartEtcd(cfg)
+	e, err := embed.StartEtcd(cfg) // 启动etcd
 	if err != nil {
 		return nil, nil, err
 	}

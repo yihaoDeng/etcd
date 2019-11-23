@@ -30,6 +30,7 @@ var (
 	plog = capnslog.NewPackageLogger("go.etcd.io/etcd", "etcdserver/api/v3rpc")
 )
 
+// 这里是rpc 调用时候的服务端接口
 type kvServer struct {
 	hdr header
 	kv  etcdserver.RaftKV

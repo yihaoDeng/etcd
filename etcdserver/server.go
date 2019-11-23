@@ -509,7 +509,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 				Node:        n,
 				heartbeat:   heartbeat,
 				raftStorage: s,
-				storage:     NewStorage(w, ss),
+				storage:     NewStorage(w, ss), // wal, 快照管理
 			},
 		),
 		id:               id,
@@ -2357,6 +2357,9 @@ func (s *EtcdServer) snapshot(snapi uint64, confState raftpb.ConfState) {
 				plog.Panicf("store save should never fail: %v", err)
 			}
 		}
+
+		// raftStorage 这个是干啥, 保存了当前的状态, 本身并并影响整个状态机
+		// raftStorage最大的作用都是打快照, 暂时先这么认为
 		snap, err := s.r.raftStorage.CreateSnapshot(snapi, &confState, d)
 		if err != nil {
 			// the snapshot was done asynchronously with the progress of raft.

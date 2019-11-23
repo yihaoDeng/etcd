@@ -24,9 +24,11 @@ import (
 )
 
 func Main() {
+	// 检查当前的机器环境,这个一般不用管
 	checkSupportArch()
 
 	if len(os.Args) > 1 {
+		// 是不是启动gateWay 或者grpc-proxy
 		cmd := os.Args[1]
 		if covArgs := os.Getenv("ETCDCOV_ARGS"); len(covArgs) > 0 {
 			args := strings.Split(os.Getenv("ETCDCOV_ARGS"), "\xe7\xcd")[1:]
@@ -42,7 +44,7 @@ func Main() {
 			return
 		}
 	}
-
+	// 这里是etcd/etcd代理的入口
 	startEtcdOrProxyV2()
 }
 

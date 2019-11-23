@@ -244,6 +244,9 @@ func (c *Config) validate() error {
 		c.Logger = raftLogger
 	}
 
+	// 这两个是冲突的. readOnlyLeaseBased依赖于clock, 也就是当前主认为[start, start + electiontimeout]不会有新主产生
+	// 这种方式并不需要checkQuorum
+	//
 	if c.ReadOnlyOption == ReadOnlyLeaseBased && !c.CheckQuorum {
 		return errors.New("CheckQuorum must be enabled when ReadOnlyOption is ReadOnlyLeaseBased")
 	}
@@ -675,6 +678,7 @@ func (r *raft) tickHeartbeat() {
 	if r.electionElapsed >= r.electionTimeout {
 		r.electionElapsed = 0
 		if r.checkQuorum {
+			// MsgCheckQuorum
 			r.Step(pb.Message{From: r.id, Type: pb.MsgCheckQuorum})
 		}
 		// If current leader cannot transfer leadership in electionTimeout, it becomes leader again.

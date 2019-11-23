@@ -154,6 +154,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 	if len(cfg.AutoCompactionRetention) == 0 {
 		cfg.AutoCompactionRetention = "0"
 	}
+	// compaction 的频度
 	autoCompactionRetention, err := parseCompactionRetention(cfg.AutoCompactionMode, cfg.AutoCompactionRetention)
 	if err != nil {
 		return e, err
@@ -207,7 +208,9 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		EnableLeaseCheckpoint:      cfg.ExperimentalEnableLeaseCheckpoint,
 		CompactionBatchLimit:       cfg.ExperimentalCompactionBatchLimit,
 	}
+	// 配置文件真的超级多
 	print(e.cfg.logger, *cfg, srvcfg, memberInitialized)
+	//etcdserver中的server
 	if e.Server, err = etcdserver.NewServer(srvcfg); err != nil {
 		return e, err
 	}
@@ -227,9 +230,11 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 	}
 	e.Server.Start()
 
+	// 单独goroutine 处理peer
 	if err = e.servePeers(); err != nil {
 		return e, err
 	}
+	// 注册处理client的请求
 	if err = e.serveClients(); err != nil {
 		return e, err
 	}
@@ -514,6 +519,7 @@ func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
 		}
 		peers[i] = &peerListener{close: func(context.Context) error { return nil }}
 		peers[i].Listener, err = rafthttp.NewListener(u, &cfg.PeerTLSInfo)
+
 		if err != nil {
 			return nil, err
 		}
@@ -717,6 +723,7 @@ func (e *Etcd) serveClients() (err error) {
 
 	// Start a client server goroutine for each listen address
 	var h http.Handler
+	// 为了兼容性, 还在这里这种专门搞了个v2v3 server
 	if e.Config().EnableV2 {
 		if len(e.Config().ExperimentalEnableV2V3) > 0 {
 			srv := v2v3.NewServer(e.cfg.logger, v3client.New(e.Server), e.cfg.ExperimentalEnableV2V3)
@@ -730,6 +737,7 @@ func (e *Etcd) serveClients() (err error) {
 		h = mux
 	}
 
+	//根据配置文件的选项, 配置grpc的一些参数
 	gopts := []grpc.ServerOption{}
 	if e.cfg.GRPCKeepAliveMinTime > time.Duration(0) {
 		gopts = append(gopts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{

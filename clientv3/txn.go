@@ -139,6 +139,7 @@ func (txn *txn) Commit() (*TxnResponse, error) {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 
+	// 该Txn的上下文信息
 	r := &pb.TxnRequest{Compare: txn.cmps, Success: txn.sus, Failure: txn.fas}
 
 	var resp *pb.TxnResponse

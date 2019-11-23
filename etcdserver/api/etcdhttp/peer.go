@@ -38,6 +38,7 @@ const (
 
 // NewPeerHandler generates an http.Handler to handle etcd peer requests.
 func NewPeerHandler(lg *zap.Logger, s etcdserver.ServerPeer) http.Handler {
+	//注意RaftHandler/ LeaseHandler, 都是etcdserver中transport返回的, 这里不用细看
 	return newPeerHandler(lg, s, s.RaftHandler(), s.LeaseHandler())
 }
 
@@ -47,6 +48,7 @@ func newPeerHandler(lg *zap.Logger, s etcdserver.Server, raftHandler http.Handle
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", http.NotFound)
+	// 注册相应的函数
 	mux.Handle(rafthttp.RaftPrefix, raftHandler)
 	mux.Handle(rafthttp.RaftPrefix+"/", raftHandler)
 	mux.Handle(peerMembersPath, peerMembersHandler)

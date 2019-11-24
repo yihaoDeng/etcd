@@ -228,6 +228,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 			return e, err
 		}
 	}
+	// 先启动etcdserver中transport, serverPeers/serveClients需要依赖该tranports
 	e.Server.Start()
 
 	// 单独goroutine 处理peer
@@ -533,6 +534,7 @@ func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
 
 // configure peer handlers after rafthttp.Transport started
 func (e *Etcd) servePeers() (err error) {
+
 	ph := etcdhttp.NewPeerHandler(e.GetLogger(), e.Server)
 	var peerTLScfg *tls.Config
 	if !e.cfg.PeerTLSInfo.Empty() {
@@ -613,6 +615,7 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 
 	sctxs = make(map[string]*serveCtx)
 	for _, u := range cfg.LCUrls {
+		// 很重要的serverCtx
 		sctx := newServeCtx(cfg.logger)
 		if u.Scheme == "http" || u.Scheme == "unix" {
 			if !cfg.ClientTLSInfo.Empty() {

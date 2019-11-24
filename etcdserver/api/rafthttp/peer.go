@@ -173,6 +173,7 @@ func startPeer(t *Transport, urls types.URLs, peerID types.ID, fs *stats.Followe
 	go func() {
 		for {
 			select {
+			// 接受到了新消息
 			case mm := <-p.recvc:
 				if err := r.Process(ctx, mm); err != nil {
 					if t.Logger != nil {

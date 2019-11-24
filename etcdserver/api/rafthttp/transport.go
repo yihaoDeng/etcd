@@ -159,6 +159,7 @@ func (t *Transport) Start() error {
 }
 
 func (t *Transport) Handler() http.Handler {
+	//  处理各种请求Handle
 	pipelineHandler := newPipelineHandler(t, t.Raft, t.ClusterID)
 	streamHandler := newStreamHandler(t, t, t.Raft, t.ID, t.ClusterID)
 	snapHandler := newSnapshotHandler(t, t.Raft, t.Snapshotter, t.ClusterID)
@@ -265,6 +266,7 @@ func (t *Transport) MendPeer(id types.ID) {
 	}
 }
 
+//  这是为了方便新加入node快速跟上集群, pipeline方式,之后就关闭了
 func (t *Transport) AddRemote(id types.ID, us []string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

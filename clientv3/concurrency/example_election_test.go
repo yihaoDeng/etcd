@@ -19,13 +19,15 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"testing"
 	"time"
 
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/clientv3/concurrency"
 )
 
-func ExampleElection_Campaign() {
+func TestExampleElection_Campaign(t *testing.T) {
+	endpoints := []string{"127.0.0.1:2379"}
 	cli, err := clientv3.New(clientv3.Config{Endpoints: endpoints})
 	if err != nil {
 		log.Fatal(err)

@@ -51,7 +51,7 @@ func init() {
 	closedCh = make(chan struct{})
 	close(closedCh)
 }
-
+// NewKV是针对某个client的, 那么怎么隔离呢? 
 // NewKV wraps a KV instance so that all requests are wired through a leasing protocol.
 func NewKV(cl *v3.Client, pfx string, opts ...concurrency.SessionOption) (v3.KV, func(), error) {
 	cctx, cancel := context.WithCancel(cl.Ctx())

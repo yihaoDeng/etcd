@@ -28,12 +28,15 @@ import (
 func TestResumeElection(t *testing.T) {
 	const prefix = "/resume-election/"
 
+	endpoints := []string{"127.0.0.1:2379"}
 	cli, err := clientv3.New(clientv3.Config{Endpoints: endpoints})
 	if err != nil {
+		t.Fatal(err.Error())
 		log.Fatal(err)
+
 	}
 	defer cli.Close()
-
+	t.Log(t.Name())
 	var s *concurrency.Session
 	s, err = concurrency.NewSession(cli)
 	if err != nil {
@@ -58,6 +61,7 @@ func TestResumeElection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Leader() returned non nil err: %s", err)
 	}
+	t.Logf("%v", leader)
 
 	// Recreate the election
 	e = concurrency.ResumeElection(s, prefix,

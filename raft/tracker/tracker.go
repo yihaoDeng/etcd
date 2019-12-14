@@ -115,7 +115,7 @@ func (c *Config) Clone() Config {
 // known about the nodes and learners in it. In particular, it tracks the match
 // index for each peer which in turn allows reasoning about the committed index.
 type ProgressTracker struct {
-	Config
+	Config // joint config 
 
 	Progress ProgressMap
 

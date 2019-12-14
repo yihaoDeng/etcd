@@ -154,7 +154,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 	if len(cfg.AutoCompactionRetention) == 0 {
 		cfg.AutoCompactionRetention = "0"
 	}
-	// compaction 的频度
+	// compaction 的设置,  比如是不是要自动compaction, 提交多少个之后做compaction
 	autoCompactionRetention, err := parseCompactionRetention(cfg.AutoCompactionMode, cfg.AutoCompactionRetention)
 	if err != nil {
 		return e, err
@@ -739,7 +739,7 @@ func (e *Etcd) serveClients() (err error) {
 		etcdhttp.HandleBasic(mux, e.Server)
 		h = mux
 	}
-
+	//如果注册了一些handle, 还可以处理http 请求
 	//根据配置文件的选项, 配置grpc的一些参数
 	gopts := []grpc.ServerOption{}
 	if e.cfg.GRPCKeepAliveMinTime > time.Duration(0) {

@@ -57,7 +57,6 @@ import (
 	"go.etcd.io/etcd/raft/raftpb"
 	"go.etcd.io/etcd/version"
 	"go.etcd.io/etcd/wal"
-
 	"github.com/coreos/go-semver/semver"
 	"github.com/coreos/pkg/capnslog"
 	humanize "github.com/dustin/go-humanize"
@@ -808,6 +807,7 @@ func (s *EtcdServer) start() {
 func (s *EtcdServer) purgeFile() {
 	var dberrc, serrc, werrc <-chan error
 	var dbdonec, sdonec, wdonec <-chan struct{}
+	// 这里并不关心purge Chan
 	if s.Cfg.MaxSnapFiles > 0 {
 		dbdonec, dberrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.SnapDir(), "snap.db", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)
 		sdonec, serrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.SnapDir(), "snap", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)

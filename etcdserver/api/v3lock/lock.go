@@ -39,7 +39,7 @@ func (ls *lockServer) Lock(ctx context.Context, req *v3lockpb.LockRequest) (*v3l
 	if err != nil {
 		return nil, err
 	}
-	s.Orphan()
+	s.Orphan() //TODO(deng.yihao), 这个session不续约, 那么怎么实现分布式锁, 或者这就是就是一个死锁, 只能主动unlock才能解锁, 这样的话, 会是个大坑
 	m := concurrency.NewMutex(s, string(req.Name))
 	if err = m.Lock(ctx); err != nil {
 		return nil, err

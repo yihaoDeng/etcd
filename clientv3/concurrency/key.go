@@ -26,7 +26,7 @@ import (
 func waitDelete(ctx context.Context, client *v3.Client, key string, rev int64) error {
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
+	
 	var wr v3.WatchResponse
 	wch := client.Watch(cctx, key, v3.WithRev(rev))
 	for wr = range wch {

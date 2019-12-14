@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "/Users/momo/VM/go/src/github.com/yihaoDeng/etcd"
+		},
+		{
+			"name": "etcd @ 3830b3e",
+			"uri": "gitlens://3830b3e/Users/momo/VM/go/src/github.com/yihaoDeng/etcd?{\"path\":\"/Users/momo/VM/go/src/github.com/yihaoDeng/etcd\",\"ref\":\"3830b3ef114b5f5853859b4140c4e835ad2a8490\",\"repoPath\":\"/Users/momo/VM/go/src/github.com/yihaoDeng/etcd\"}"
+		}
+	],
+	"settings": {}
+}

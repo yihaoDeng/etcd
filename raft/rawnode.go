@@ -56,7 +56,7 @@ func NewRawNode(config *Config) (*RawNode, error) {
 
 // Tick advances the internal logical clock by a single tick.
 func (rn *RawNode) Tick() {
-	rn.raft.tick()
+	rn.raft.tick() // raft 文件中有了针对leader/follower的处理
 }
 
 // TickQuiesced advances the internal logical clock by a single tick without
